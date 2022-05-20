@@ -1,0 +1,7 @@
+Call Outcome|Meaning|Resting Rule
+Hung up|The prospective customer just hung up on the agent during the call|6 months
+Wrong number|The number that was dialled was incorrect|Permanent
+Decision maker unavailable|The key person that the agent needed to speak to was unavailable perhaps due to sickness, or being on holiday|Do not rest
+Callback|A follow-up call has been scheduled with the customer|Do not rest
+Not Interested|The prospective customer was not interested in our client’s service at this time|3 months
+Engaged|The agent could not get through to the prospective client|Do not rest
