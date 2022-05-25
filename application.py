@@ -2,6 +2,7 @@ from multiprocessing.sharedctypes import Value
 import os
 import datetime as dt
 from time import strptime, tzname
+from tkinter import E, N
 from xmlrpc.client import DateTime
 from dateutil import parser
 import pandas as pd
@@ -130,24 +131,22 @@ class LeadParser():
         #set up outcome rules
         try:
             for file in os.listdir(self.data_files_location):
-                    
-                    if '.csv' in file:
-                        
-                        #get the csv data as a dataframe
-                        df = self.ingest(os.path.join(self.data_files_location,file))
+                if '.csv' in file:
+                    #get the csv data as a dataframe
+                    df = self.ingest(os.path.join(self.data_files_location,file))
 
-                        #if none is returned then we exit out.
-                        if type(df) == type(pd.DataFrame()):
-                            if df.empty:
-                                print(f"Failed to parse {file}")
-                                continue
-                        else:
+                    #if none is returned then we exit out.
+                    if type(df) == type(pd.DataFrame()):
+                        if df.empty:
                             print(f"Failed to parse {file}")
                             continue
+                    else:
+                        print(f"Failed to parse {file}")
+                        continue
 
-                        #apply filtering rules
-                        ids = self.filter(df)
-                        lead_ids.extend(ids)
+                    #apply filtering rules
+                    ids = self.filter(df)
+                    lead_ids.extend(ids)
 
             csv_file = ""
             if len(lead_ids) > 0:
@@ -187,6 +186,42 @@ class LeadParser():
         except Exception as exc:
             self.logger.exception(exc)
         return False
+
+    def process_contract_renewal(self,renewal_date):
+        #convert renewal date into datetime obj
+        #compare renewal date against deliver date
+        target_format = '%Y/%m/%d'
+        process_lead = False
+        try:
+            renewal_date_dt = dt.datetime.strptime(renewal_date,target_format)
+            delivery_date_boundary = self.returns_due_datetime + relativedelta(months=-3)
+            if renewal_date_dt <= self.returns_due_datetime and renewal_date_dt >= delivery_date_boundary:
+                self.logger.debug("contract within 3 months of delivery date")
+                process_lead = True
+        except Exception as exc:
+            self.logger.exception(exc)
+
+        return process_lead
+
+    #processes the lead based on whether its contract renewal, or based on call_outcome rule.
+    def process_lead(self,call_outcome,call_occurred,contract_renewal_date):
+        lead_needs_processing = False
+        if contract_renewal_date != "nan":
+                lead_needs_processing = self.process_contract_renewal(contract_renewal_date)
+        else:
+            lead_date_str = self.process_call_outcome(call_outcome,call_occurred)
+            #perm call outcome, or error
+            if lead_date_str == "":
+                lead_needs_processing = False
+            #this would mean that there was no processing on the date string because its do not rest.
+            elif lead_date_str == call_occurred:
+                lead_needs_processing = True
+            #else would mean the datetime str has been incremented, or more specifically rested.
+            else:
+                #now we need to check whether the date we are sending the leads out, is greater than the rested time, ie we have rested enough.
+                lead_needs_processing = self.is_lead_rested(lead_date_str)
+        return lead_needs_processing
+
 
     #apply string to datetime, then add months, then return as string again.
     def process_month_addition_rules(self,call_occurred,rule):
@@ -237,21 +272,10 @@ class LeadParser():
             lead_id = str(series[0])
             call_outcome = series[3]
             call_occurred = series[2]
-            
-            lead_date_str = self.process_call_outcome(call_outcome,call_occurred)
-            
-            #perm call outcome, or error
-            if lead_date_str == "":
-                lead_needs_processing = False
-            #this would mean that there was no processing on the date string because its do not rest.
-            elif lead_date_str == call_occurred:
-                lead_needs_processing = True
-            #else would mean the datetime str has been incremented, or more specifically rested.
-            else:
-                #now we need to check whether the date we are sending the leads out, is greater than the rested time, ie we have rested enough.
-                lead_needs_processing = self.is_lead_rested(lead_date_str)
-            
+            contract_renewal_date = str(series[4])
 
+            lead_needs_processing = self.process_lead(call_outcome,call_occurred,contract_renewal_date)
+            
             #if the lead_id is already in there, then we overwrite what its last status was.
             ids[lead_id] = lead_needs_processing
         lead_ids = [id[0] for id in ids.items() if id[1]]
@@ -317,7 +341,7 @@ def main(args):
 if __name__ == '__main__':
     #take out the calling name
     #main(sys.argv[1:])
-    main([r'C:\Users\tkk10\Documents\Development\Growth Intelligence','01/08/2021'])
+    main([r'C:\Users\tkk10\Documents\Development\Growth Intelligence','01/08/2022'])
     
     
     
